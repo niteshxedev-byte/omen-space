@@ -160,6 +160,39 @@ fn spawn_overlay() {
     }
 }
 
+fn spawn_awake_dialog() {
+    omen_types::repair_graphical_session_env();
+
+    let mut candidates: Vec<std::path::PathBuf> = Vec::new();
+    if let Some(sibling) = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|dir| dir.join("omen-overlay")))
+    {
+        if sibling.exists() {
+            candidates.push(sibling);
+        }
+    }
+    candidates.push(std::path::PathBuf::from("omen-overlay"));
+    candidates.push(std::path::PathBuf::from("/usr/bin/omen-overlay"));
+
+    for candidate in candidates {
+        if let Ok(mut child) = Command::new(&candidate)
+            .arg("--awake-dialog")
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::inherit())
+            .spawn()
+        {
+            info!("Spawned awake dialog {} (pid {})", candidate.display(), child.id());
+            std::thread::spawn(move || {
+                let _ = child.wait();
+            });
+            return;
+        }
+    }
+    warn!("Failed to spawn awake dialog");
+}
+
 async fn toggle_overlay() {
     spawn_overlay();
 }
@@ -624,6 +657,9 @@ async fn main() {
                                     } else if *key_name == "overlay" {
                                         info!("Overlay hotkey detected, toggling overlay...");
                                         spawn_overlay();
+                                    } else if *key_name == "awake_prompt" {
+                                        info!("Inactivity alert: spawning 'Are you awake?' dialog...");
+                                        spawn_awake_dialog();
                                     }
                                 }
                             }

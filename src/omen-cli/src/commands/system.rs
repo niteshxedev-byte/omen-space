@@ -36,6 +36,14 @@ pub enum SystemCommand {
     ApplyUpdate,
     /// Clear page cache memory
     CleanMemory,
+    /// View 'Are you awake?' inactivity timer status
+    AwakeStatus,
+    /// Set inactivity timer in hours (e.g. `2.0` for 2h, `0` to disable)
+    SetAwake {
+        hours: f64,
+    },
+    /// Trigger 'Are you awake?' dialog immediately for testing
+    TestAwake,
 }
 
 pub async fn handle(cmd: &SystemCommand, conn: &Connection) -> Result<()> {
@@ -134,6 +142,35 @@ pub async fn handle(cmd: &SystemCommand, conn: &Connection) -> Result<()> {
         SystemCommand::CleanMemory => {
             let res = proxy.clean_memory().await?;
             println!("Response: {}", res);
+        }
+        SystemCommand::AwakeStatus => {
+            let res = proxy.get_inactivity_state().await?;
+            let json: serde_json::Value = serde_json::from_str(&res).unwrap_or(serde_json::Value::Null);
+            let enabled = json["enabled"].as_bool().unwrap_or(false);
+            let timeout_secs = json["timeout_secs"].as_u64().unwrap_or(7200);
+            let idle_secs = json["idle_secs"].as_u64().unwrap_or(0);
+            let prompt_active = json["prompt_active"].as_bool().unwrap_or(false);
+
+            println!("\x1b[1;36m=== Inactivity & Sleep Guard (Are You Awake?) ===\x1b[0m");
+            println!("  \x1b[1mStatus:\x1b[0m         {}", if enabled { "\x1b[1;32mEnabled\x1b[0m" } else { "\x1b[1;33mDisabled\x1b[0m" });
+            println!("  \x1b[1mTimeout:\x1b[0m        {:.1} hours ({} seconds)", timeout_secs as f64 / 3600.0, timeout_secs);
+            println!("  \x1b[1mCurrent Idle:\x1b[0m   {:.1} minutes ({} seconds)", idle_secs as f64 / 60.0, idle_secs);
+            println!("  \x1b[1mPrompt Active:\x1b[0m  {}", if prompt_active { "\x1b[1;31mYES (Awake dialog open)\x1b[0m" } else { "No" });
+            println!("  \x1b[1mAwake Action:\x1b[0m   Extends timer to 3.0 hours (10800s); no action shuts down system.");
+        }
+        SystemCommand::SetAwake { hours } => {
+            let enabled = *hours > 0.0;
+            let timeout_secs = (*hours * 3600.0).round() as u64;
+            let res = proxy.set_inactivity_timer(enabled, timeout_secs).await?;
+            if enabled {
+                println!("Response: {} (Inactivity timer set to {:.1} hours / {} seconds)", res, hours, timeout_secs);
+            } else {
+                println!("Response: {} (Inactivity timer disabled)", res);
+            }
+        }
+        SystemCommand::TestAwake => {
+            let res = proxy.trigger_awake_prompt().await?;
+            println!("Response: {} (Triggered 'Are you awake?' dialog in user session)", res);
         }
     }
 

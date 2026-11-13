@@ -62,11 +62,39 @@ Configured the physical keyboard OMEN key (key code 148 / `KEY_PROG1`) to launch
 3. **KDE Plasma Shortcut:** Registered `Launch (2)` and `Tools` in `~/.config/kglobalshortcutsrc` for `org.hp.OmenSpace.desktop`.
 4. **Systemd User Unit:** Created `~/.config/systemd/user/omen-tray.service` to keep the tray applet and hotkey listener persistent across login sessions.
 
+### E. Inactivity & Sleep Guard ("Are You Awake?")
+Added a configurable inactivity timer feature to automatically detect user absence, prompt with an "Are you awake?" dialog, and safely shut down the laptop to prevent unnecessary battery drain and overheating:
+1. **Hardware Evdev Monitoring (`inactivity_monitor.rs`):**
+   - Directly monitors all input devices (`/dev/input/event*`) at the root daemon level for keyboards, touchpads, and mice.
+   - Zero compositor dependencies (works identically on Wayland, X11, or lock screen).
+   - Dynamically filters for key presses (`EV_KEY`), relative mouse movements (`EV_REL`), and absolute touchpad touches/swipes (`EV_ABS`), resetting the idle timer on real physical input.
+2. **Watchdog & D-Bus IPC:**
+   - Evaluates idle time every second against the configured threshold (default: 2 hours / 7200s, selectable from 30m to 4h).
+   - When idle time exceeds the threshold, broadcasts `MacroKeyPressed("awake_prompt")` across D-Bus.
+   - Includes a 75-second safety fallback: if the dialog is ignored or unhandled, the daemon invokes `systemctl poweroff` directly.
+   - Exposed D-Bus methods: `get_inactivity_state`, `set_inactivity_timer`, `extend_inactivity_timer`, `poweroff_system`, `trigger_awake_prompt`.
+3. **Interactive "Are You Awake?" Dialog (`omen-overlay`):**
+   - Launched via `omen-overlay --awake-dialog` triggered by `omen-tray`.
+   - Features a 60-second animated visual countdown.
+   - Two clear action choices:
+     - **"Yes, I'm awake (+1h to 3h)"**: Increases the timer threshold to 3 hours (10,800 seconds), resets the inactivity tracker, sends a desktop confirmation notification, and closes the dialog.
+     - **"Shut Down Now"** (or countdown reaching 0): Immediately issues a clean system shutdown (`systemctl poweroff`).
+   - Keyboard navigation supported: `Enter`, `Space`, `Y`, and `Esc` trigger "Yes, I'm awake"; `S` triggers "Shut Down Now".
+4. **GUI Configuration (`omen-gui`):**
+   - Added an "Inactivity & Sleep Guard" settings card under General Settings.
+   - User-configurable toggle switch (Enabled / Disabled).
+   - Duration selector combo box (30 minutes, 1 hour, 1.5 hours, 2 hours [default], 3 hours, 4 hours).
+   - "Launch Test Prompt" button to immediately test the dialog flow and actions.
+5. **CLI Administration (`omen-cli`):**
+   - `omen-cli system awake-status`: View current timer status, timeout setting, idle seconds, and prompt state.
+   - `omen-cli system set-awake <hours>`: Configure inactivity timeout in decimal hours (e.g. `2.0` or `0.5`).
+   - `omen-cli system test-awake`: Immediately trigger the "Are you awake?" dialog over D-Bus for testing.
+
 ---
 
 ## 3. Verification & Testing Results
 
-| Test Scenario | Executed Command | Hardware Response (`nbfc status`) | Telemetry (`omen-cli fan info`) |
+| Test Scenario | Executed Command | Hardware / System Response | Telemetry / Status |
 | :--- | :--- | :--- | :--- |
 | **Manual Fan Speed** | `omen-cli fan set-speed 70` | Target Fan Speed: 70.00% (Fan 1 & Fan 2) | Physical fan speed spins up |
 | **Manual Fan Speed** | `omen-cli fan set-speed 35` | Target Fan Speed: 35.00% (Fan 1 & Fan 2) | Fans decelerate smoothly |
@@ -74,12 +102,25 @@ Configured the physical keyboard OMEN key (key code 148 / `KEY_PROG1`) to launch
 | **Dynamic Auto Mode** | `omen-cli fan set-mode auto` | Curve-driven dynamic adjustment | Target RPM adjusted to thermal temp |
 | **Hardware EC Auto** | `omen-cli fan set-mode ec` | Auto Control Enabled: true | Firmware takes over |
 | **OMEN Key Press** | Keyboard OMEN key | D-Bus signal emitted | `omen-gui` window opens |
+| **Awake Status Check** | `omen-cli system awake-status` | D-Bus returns current inactivity state | `enabled: true`, `timeout_secs: 7200`, `idle_secs: <secs>` |
+| **Awake Dialog UI** | `omen-overlay --awake-dialog` | Modal countdown dialog displays on screen | 60s countdown ticks; "Yes (+1h to 3h)" and "Shut Down Now" functional |
+| **Awake Test Trigger** | `omen-cli system test-awake` | D-Bus `MacroKeyPressed("awake_prompt")` emitted | `omen-tray` spawns dialog overlay |
 
 ---
 
-## 4. Modified Files in this Commit
+## 4. Modified Files
 
-- `src/omen-space-daemon/src/boards.json`: Board capabilities entry for `8A4F`.
-- `src/omen-space-daemon/src/fan/mod.rs`: `nbfc` backend integration into daemon fan control pipeline.
-- `src/omen-cli/src/commands/fan.rs`: Added `set-speed` subcommand.
+- `src/omen-types/src/lib.rs`: Added `InactivityState` struct and D-Bus platform methods.
+- `src/omen-space-daemon/src/inactivity_monitor.rs`: New hardware evdev input watcher and watchdog timer.
+- `src/omen-space-daemon/src/platform.rs`: D-Bus endpoints for timer configuration and awake prompt.
+- `src/omen-space-daemon/src/main.rs`: Inactivity monitor initialization on startup.
+- `src/omen-tray/src/main.rs`: Intercepts `awake_prompt` signal and launches dialog overlay.
+- `src/omen-overlay/src/awake_dialog.rs`: Interactive Libadwaita dialog with countdown, extensions, and keyboard shortcuts.
+- `src/omen-overlay/src/daemon_client.rs`: D-Bus client calls for extending timer and powering off.
+- `src/omen-overlay/src/main.rs`: Added `--awake-dialog` command-line argument.
+- `src/omen-overlay/src/style.css`: Sleek glassmorphic OMEN styling for dialog and countdown.
+- `src/omen-gui/src/settings.rs`: Added Inactivity Guard preference group and controls.
+- `src/omen-gui/src/daemon_client.rs`: Synchronous helpers for inactivity settings.
+- `src/omen-cli/src/commands/system.rs`: Added `awake-status`, `set-awake`, and `test-awake` commands.
+- `src/omen-cli/src/dbus_proxy.rs`: D-Bus proxy methods for CLI system commands.
 - `MODIFICATIONS.md`: Documentation of modifications and verification.

@@ -296,6 +296,97 @@ pub fn build_page(window: &adw::ApplicationWindow, on_lang_changed: Option<Rc<dy
 
     page.append(&perf_group);
 
+    // ── Inactivity & Sleep Timer group ─────────────────────────
+    let awake_group = adw::PreferencesGroup::builder()
+        .title("Inactivity & Sleep Guard")
+        .description("Automatically checks for keyboard & trackpad activity and presents an 'Are you awake?' prompt before shutting down to protect battery and hardware.")
+        .build();
+
+    let init_inactivity = crate::daemon_client::get_inactivity_state_sync();
+    let awake_switch = adw::SwitchRow::builder()
+        .title("Enable 'Are You Awake?' Auto-Shutdown")
+        .subtitle("Monitors physical keyboard and trackpad/mouse input for unattended inactivity")
+        .build();
+    awake_switch.set_active(init_inactivity.enabled);
+    awake_group.add(&awake_switch);
+
+    let selected_idx = match init_inactivity.timeout_secs {
+        1800 => 0,
+        3600 => 1,
+        5400 => 2,
+        10800 => 4,
+        14400 => 5,
+        _ => 3, // Default 2 hours (7200s)
+    };
+
+    let timeout_model = gtk::StringList::new(&[
+        "30 Minutes",
+        "1 Hour",
+        "1.5 Hours",
+        "2 Hours (Default)",
+        "3 Hours",
+        "4 Hours",
+    ]);
+    let timeout_row = adw::ComboRow::builder()
+        .title("Inactivity Timeout")
+        .subtitle("If no keyboard or trackpad input is detected for this duration, the 'Are you awake?' dialog will appear")
+        .model(&timeout_model)
+        .selected(selected_idx)
+        .build();
+    awake_group.add(&timeout_row);
+
+    let extend_row = adw::ActionRow::builder()
+        .title("Awake Response Behavior")
+        .subtitle("Clicking 'Yes' on the prompt increases the timer to 3 Hours. Inaction triggers safe shutdown.")
+        .build();
+    let badge = gtk::Label::builder()
+        .label("+1h → 3h")
+        .css_classes(["badge-ok"])
+        .valign(gtk::Align::Center)
+        .build();
+    extend_row.add_suffix(&badge);
+    awake_group.add(&extend_row);
+
+    let test_row = adw::ActionRow::builder()
+        .title("Test 'Are You Awake?' Dialog")
+        .subtitle("Immediately display the interactive dialog box to verify the prompt and countdown")
+        .build();
+    let test_btn = gtk::Button::builder()
+        .label("Launch Test Prompt")
+        .css_classes(["suggested-action"])
+        .valign(gtk::Align::Center)
+        .build();
+    test_btn.connect_clicked(|_| {
+        crate::daemon_client::trigger_awake_prompt_sync();
+    });
+    test_row.add_suffix(&test_btn);
+    awake_group.add(&test_row);
+
+    page.append(&awake_group);
+
+    let awake_sw_c = awake_switch.clone();
+    let timeout_c = timeout_row.clone();
+    let sync_inactivity = move || {
+        let enabled = awake_sw_c.is_active();
+        let idx = timeout_c.selected();
+        let secs = match idx {
+            0 => 1800,
+            1 => 3600,
+            2 => 5400,
+            4 => 10800,
+            5 => 14400,
+            _ => 7200,
+        };
+        crate::daemon_client::set_inactivity_timer_sync(enabled, secs);
+    };
+    let sync_inactivity_rc = Rc::new(sync_inactivity);
+
+    let si1 = sync_inactivity_rc.clone();
+    awake_switch.connect_active_notify(move |_| si1());
+
+    let si2 = sync_inactivity_rc.clone();
+    timeout_row.connect_selected_notify(move |_| si2());
+
 
     // Save logic for all
     let hb_spin_clone = hb_spin.clone();

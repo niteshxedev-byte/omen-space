@@ -88,6 +88,11 @@ pub trait Platform {
     async fn check_app_update(&self) -> zbus::Result<String>;
     async fn apply_app_update(&self) -> zbus::Result<String>;
     async fn toggle_overlay(&self) -> zbus::Result<String>;
+    async fn get_inactivity_state(&self) -> zbus::Result<String>;
+    async fn set_inactivity_timer(&self, enabled: bool, timeout_secs: u64) -> zbus::Result<String>;
+    async fn extend_inactivity_timer(&self, new_timeout_secs: u64) -> zbus::Result<String>;
+    async fn poweroff_system(&self) -> zbus::Result<String>;
+    async fn trigger_awake_prompt(&self) -> zbus::Result<String>;
     async fn ping(&self) -> zbus::Result<String>;
 }
 

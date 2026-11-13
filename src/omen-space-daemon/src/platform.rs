@@ -613,6 +613,32 @@ impl PlatformService {
         "OK".to_string()
     }
 
+    /// GetInactivityState — Returns JSON representation of the inactivity & awake timer state.
+    async fn get_inactivity_state(&self) -> String {
+        let state = crate::inactivity_monitor::InactivityMonitor::get_state().await;
+        serde_json::to_string(&state).unwrap_or_else(|_| "{}".to_string())
+    }
+
+    /// SetInactivityTimer — Configure inactivity timer enabled status and timeout in seconds.
+    async fn set_inactivity_timer(&self, enabled: bool, timeout_secs: u64) -> String {
+        crate::inactivity_monitor::InactivityMonitor::set_timer(enabled, timeout_secs).await
+    }
+
+    /// ExtendInactivityTimer — Extends inactivity timer (e.g. to 3 hours) and resets prompt.
+    async fn extend_inactivity_timer(&self, new_timeout_secs: u64) -> String {
+        crate::inactivity_monitor::InactivityMonitor::extend_timer(new_timeout_secs).await
+    }
+
+    /// PoweroffSystem — Shuts down the machine cleanly.
+    async fn poweroff_system(&self) -> String {
+        crate::inactivity_monitor::InactivityMonitor::poweroff_system()
+    }
+
+    /// TriggerAwakePrompt — Immediately triggers the 'Are you awake?' dialog for testing.
+    async fn trigger_awake_prompt(&self) -> String {
+        crate::inactivity_monitor::InactivityMonitor::trigger_awake_prompt().await
+    }
+
     #[zbus(signal)]
     pub async fn macro_key_pressed(ctxt: &zbus::SignalContext<'_>, key_name: &str) -> zbus::Result<()>;
 

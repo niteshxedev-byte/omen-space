@@ -1601,7 +1601,6 @@ dependencies = [
 name = "omen-overlay"
 version = "2.2.1"
 dependencies = [
- "clap 4.6.7",
  "env_logger 0.10.2",
  "futures",
  "glib",

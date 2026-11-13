@@ -179,3 +179,92 @@ window.omen-overlay-window {
     border-radius: 4px;
     padding: 1px 5px;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ARE YOU AWAKE? INACTIVITY DIALOG
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+window.awake-window {
+    background-color: transparent;
+}
+
+.awake-card {
+    background: rgba(13, 15, 24, 0.96);
+    border: 2px solid rgba(255, 0, 85, 0.45);
+    border-radius: 20px;
+    padding: 24px 28px;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.85), 0 0 30px rgba(255, 0, 85, 0.25);
+}
+
+.awake-icon {
+    color: #ff0055;
+}
+
+.awake-tag {
+    font-size: 11px;
+    font-weight: 700;
+    color: #00e5ff;
+    background: rgba(0, 229, 255, 0.12);
+    border: 1px solid rgba(0, 229, 255, 0.35);
+    border-radius: 6px;
+    padding: 3px 8px;
+    letter-spacing: 1px;
+}
+
+.awake-title {
+    font-size: 24px;
+    font-weight: 800;
+    color: #ffffff;
+    letter-spacing: 0.5px;
+}
+
+.awake-desc {
+    font-size: 13px;
+    color: #a0aec0;
+    line-height: 1.5;
+}
+
+.awake-countdown-box {
+    background: rgba(255, 0, 85, 0.12);
+    border: 1px solid rgba(255, 0, 85, 0.3);
+    border-radius: 10px;
+    padding: 10px 18px;
+    margin: 6px 0;
+}
+
+.awake-countdown-text {
+    font-size: 14px;
+    font-weight: 700;
+    color: #ff3366;
+}
+
+.awake-btn-confirm {
+    background: linear-gradient(135deg, #00b4d8, #0077b6);
+    color: #ffffff;
+    font-weight: 700;
+    border-radius: 12px;
+    padding: 12px 18px;
+    font-size: 14px;
+    border: none;
+}
+
+.awake-btn-confirm:hover {
+    background: linear-gradient(135deg, #00c3e6, #0088cc);
+    box-shadow: 0 0 16px rgba(0, 180, 216, 0.4);
+}
+
+.awake-btn-shutdown {
+    background: rgba(255, 0, 85, 0.15);
+    border: 1.5px solid rgba(255, 0, 85, 0.4);
+    color: #ff3366;
+    font-weight: 700;
+    border-radius: 12px;
+    padding: 12px 18px;
+    font-size: 14px;
+}
+
+.awake-btn-shutdown:hover {
+    background: rgba(255, 0, 85, 0.3);
+    border-color: #ff0055;
+    color: #ffffff;
+}

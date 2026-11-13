@@ -1,6 +1,7 @@
 use gtk::prelude::*;
 use libadwaita as adw;
 
+mod awake_dialog;
 mod daemon_client;
 mod overlay_window;
 mod i18n;
@@ -56,7 +57,13 @@ fn main() {
         );
     });
 
-    app.connect_activate(|app| {
+    let is_awake_dialog = std::env::args().any(|a| a == "--awake-dialog" || a == "--awake");
+
+    app.connect_activate(move |app| {
+        if is_awake_dialog {
+            awake_dialog::show_awake_dialog(app);
+            return;
+        }
 
         let overlay = overlay_window::OverlayWindow::new(app);
         
@@ -93,7 +100,10 @@ fn main() {
         overlay.window.present();
     });
 
-    app.run();
+    let filtered_args: Vec<String> = std::env::args()
+        .filter(|a| a != "--awake-dialog" && a != "--awake")
+        .collect();
+    app.run_with_args(&filtered_args);
 }
 
 #[cfg(test)]

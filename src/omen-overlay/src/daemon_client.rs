@@ -83,6 +83,18 @@ pub async fn get_fan_mode() -> String {
     "auto".to_string()
 }
 
+pub async fn extend_inactivity_timer(new_timeout_secs: u64) -> Result<String, zbus::Error> {
+    let conn = get_conn().await?;
+    let proxy = PlatformProxy::new(&conn).await?;
+    proxy.extend_inactivity_timer(new_timeout_secs).await
+}
+
+pub async fn poweroff_system() -> Result<String, zbus::Error> {
+    let conn = get_conn().await?;
+    let proxy = PlatformProxy::new(&conn).await?;
+    proxy.poweroff_system().await
+}
+
 // ── Telemetry and Hotkey Subscribers ─────────────────────────────────────────
 
 static TELEMETRY_SENDERS: std::sync::OnceLock<std::sync::Mutex<Vec<glib::Sender<SystemStats>>>> = std::sync::OnceLock::new();

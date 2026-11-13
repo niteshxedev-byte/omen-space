@@ -122,6 +122,15 @@ impl DriveKind {
 /// Static description of one internal storage device (NVMe / SATA SSD / HDD / eMMC).
 #[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
+pub struct InactivityState {
+    pub enabled: bool,
+    pub timeout_secs: u64,
+    pub idle_secs: u64,
+    pub prompt_active: bool,
+}
+
+#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct DriveInfo {
     /// Kernel block device name, e.g. `nvme0n1`. Also the key that ties this entry to its
     /// `DriveUsage` in the telemetry stream.
@@ -250,6 +259,11 @@ pub trait Platform {
     async fn run_fan_cleaning(&self) -> zbus::Result<String>;
     async fn toggle_overlay(&self) -> zbus::Result<String>;
     async fn generate_triage_bundle(&self) -> zbus::Result<String>;
+    async fn get_inactivity_state(&self) -> zbus::Result<String>;
+    async fn set_inactivity_timer(&self, enabled: bool, timeout_secs: u64) -> zbus::Result<String>;
+    async fn extend_inactivity_timer(&self, new_timeout_secs: u64) -> zbus::Result<String>;
+    async fn poweroff_system(&self) -> zbus::Result<String>;
+    async fn trigger_awake_prompt(&self) -> zbus::Result<String>;
     #[zbus(signal)]
     fn macro_key_pressed(&self, key_name: &str) -> zbus::Result<()>;
 }

@@ -23,6 +23,7 @@ mod game_automation;
 mod power_automation;
 pub mod desktop_rgb;
 mod hotkey_monitor;
+mod inactivity_monitor;
 
 #[cfg(test)]
 mod tests;
@@ -118,6 +119,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     // Start zero-overhead hotkey monitor
     hotkey_monitor::HotkeyMonitor::start(_conn.clone());
+
+    // Start keyboard and trackpad inactivity monitor for "Are you awake?" auto-shutdown
+    inactivity_monitor::InactivityMonitor::start(_conn.clone());
 
     info!("omen-space-daemon successfully registered all microservices & WMI diagnostic engines on D-Bus.");
 

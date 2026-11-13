@@ -724,6 +724,57 @@ pub fn set_battery_care_sync(limit: u32) {
     });
 }
 
+pub fn get_inactivity_state_sync() -> InactivityState {
+    tokio::task::block_in_place(|| {
+        get_runtime().block_on(async {
+            if let Ok(conn) = get_conn().await {
+                if let Ok(proxy) = PlatformProxy::new(&conn).await {
+                    if let Ok(json_str) = proxy.get_inactivity_state().await {
+                        if let Ok(st) = serde_json::from_str::<InactivityState>(&json_str) {
+                            return st;
+                        }
+                    }
+                }
+            }
+            InactivityState::default()
+        })
+    })
+}
+
+pub fn set_inactivity_timer_sync(enabled: bool, timeout_secs: u64) {
+    let rt = get_runtime();
+    rt.spawn(async move {
+        if let Ok(conn) = get_conn().await {
+            if let Ok(proxy) = PlatformProxy::new(&conn).await {
+                let _ = proxy.set_inactivity_timer(enabled, timeout_secs).await;
+            }
+        }
+    });
+}
+
+#[allow(dead_code)]
+pub fn extend_inactivity_timer_sync(new_timeout_secs: u64) {
+    let rt = get_runtime();
+    rt.spawn(async move {
+        if let Ok(conn) = get_conn().await {
+            if let Ok(proxy) = PlatformProxy::new(&conn).await {
+                let _ = proxy.extend_inactivity_timer(new_timeout_secs).await;
+            }
+        }
+    });
+}
+
+pub fn trigger_awake_prompt_sync() {
+    let rt = get_runtime();
+    rt.spawn(async move {
+        if let Ok(conn) = get_conn().await {
+            if let Ok(proxy) = PlatformProxy::new(&conn).await {
+                let _ = proxy.trigger_awake_prompt().await;
+            }
+        }
+    });
+}
+
 
 
 
