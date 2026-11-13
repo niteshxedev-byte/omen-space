@@ -59,6 +59,12 @@ The following issues have been resolved and tested with the Omen Space 2.0 archi
 - **Root Cause:** The installer's stock `hp-wmi` override relied on renaming the stock `.ko` file to `.backup`. On CachyOS/Arch, `modinfo -n hp-wmi` can return the DKMS `updates/` path even before our module is installed, causing the backup step to silently skip. At boot, both the stock and custom `.ko` files are present; the kernel refuses to load the duplicate and drops to emergency mode. This affected all kernels ≥ 7.x where stock `hp-wmi` is shipped (LTS at 6.18 was unaffected because it ships without `hp-wmi`).
 - **Status:** ✅ **Resolved.** Replaced the fragile file-backup mechanism with a `modprobe.d` blacklist (`/etc/modprobe.d/omen-space-hpwmi-override.conf`). The blacklist (`blacklist hp_wmi` + `install hp_wmi /bin/true`) prevents the stock module from loading at boot while the custom DKMS build in `updates/` takes priority. This also restores full feature parity on kernel 7.x — `gpu_tgp`, `gpu_ppab`, `chassis_temp`, and custom fan curves now work correctly. The `STOCK_FAN_SUPPORT`/`FORCE_CUSTOM_HPWMI` dual-mode logic (which previously degraded kernel 7.x users to RGB-only mode) was removed entirely.
 
+### [8A4F] Fan Control Unsupported / Missing PWM Node — HP Victus 15-fa0xxx
+- **Description:** WMI fan speed writes are unsupported/rejected by the BIOS and no `pwm1` sysfs node exists in `hwmon`, preventing custom fan curves and manual fan speed adjustments.
+- **Root Cause:** HP Victus 15 boards only support EC register writes and reject standard WMI `0x2E` commands.
+- **Status:** ✅ **Resolved.** Integrated NoteBook FanControl (`nbfc`) as an EC execution backend in `omen-space-daemon` and `boards.json`. Software curves, `max` mode, `auto` mode, and manual `omen-cli fan set-speed` now control physical fans via EC registers. See [MODIFICATIONS.md](MODIFICATIONS.md) for full documentation.
+
+
 
 ---
 

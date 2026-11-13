@@ -40,6 +40,9 @@
 | **Quick HUD (`Shift+F2`)** | In-game floating overlay and system tray applet for switching power and fan profiles on the fly without leaving your workflow. |
 | **Profile Manager & Updater** | Automatic per-application performance rules (Wayland & X11) and an integrated **Update Center** with commit-level changelog tracking, live build progress, and `fwupd` (LVFS) firmware scanning. |
 
+> **Note on HP Victus & Non-PWM Boards:** See [MODIFICATIONS.md](MODIFICATIONS.md) for details on NoteBook FanControl (`nbfc`) EC integration for HP Victus 15 laptops (`8A4F`) where WMI fan writes are unsupported by the BIOS.
+
+
 ---
 
 ## Installation
