@@ -395,17 +395,82 @@ impl FanService {
         if pct >= 100 { 0 } else { 2 }
     }
 
+    /// Check if NoteBook FanControl (`nbfc`) is installed and available.
+    pub async fn nbfc_available() -> bool {
+        tokio::fs::metadata("/usr/bin/nbfc").await.is_ok()
+    }
+
+    /// Set fan speed percentage (0-100) via nbfc.
+    pub async fn nbfc_set_speed(pct: u32) -> bool {
+        let pct_clamped = pct.clamp(0, 100);
+        info!("Applying fan speed {}% via nbfc", pct_clamped);
+        match tokio::process::Command::new("/usr/bin/nbfc")
+            .args(["set", "-s", &pct_clamped.to_string()])
+            .output()
+            .await
+        {
+            Ok(out) => out.status.success(),
+            Err(e) => {
+                warn!("Failed to invoke nbfc set -s: {}", e);
+                false
+            }
+        }
+    }
+
+    /// Release fan speed to automatic / profile control via nbfc.
+    pub async fn nbfc_set_auto() -> bool {
+        info!("Applying fan mode auto via nbfc");
+        match tokio::process::Command::new("/usr/bin/nbfc")
+            .args(["set", "-a"])
+            .output()
+            .await
+        {
+            Ok(out) => out.status.success(),
+            Err(e) => {
+                warn!("Failed to invoke nbfc set -a: {}", e);
+                false
+            }
+        }
+    }
+
     /// Write PWM duty cycle to hwmon. This sets both the mode (pwm1_enable=1 or 0 for max)
     /// and the duty value (pwm1=0..255), matching OmenCore's SetHwmonPwmDutyPercent.
     async fn write_pwm_duty(state: &mut FanState, pct: u32) -> bool {
+        let now = std::time::Instant::now();
+
+        // If NoteBook FanControl (nbfc) is available (e.g. HP Victus EC fan control), sync to EC
+        if Self::nbfc_available().await {
+            let should_write = state.last_written_duty != Some(pct)
+                || state.last_written_duty_time.is_none_or(|t| now.duration_since(t).as_secs() >= 5);
+
+            if should_write {
+                if pct == 0 || (state.mode == "auto" && pct <= 10) {
+                    let _ = Self::nbfc_set_auto().await;
+                } else {
+                    let _ = Self::nbfc_set_speed(pct).await;
+                }
+            }
+        }
+
         let hwmon = match state.hwmon_path {
             Some(ref h) => h.clone(),
-            None => return false,
+            None => {
+                if Self::nbfc_available().await {
+                    state.last_written_duty = Some(pct);
+                    state.last_written_duty_time = Some(now);
+                    let max_speed = state.max_speeds.values().max().copied().unwrap_or(6000);
+                    let rpm = ((max_speed as f64 * pct as f64) / 100.0).round() as u32;
+                    for &fan_num in &state.found_fans.clone() {
+                        state.last_targets.insert(fan_num, rpm);
+                    }
+                    return true;
+                }
+                return false;
+            }
         };
 
         let pwm_enable_path = hwmon.join("pwm1_enable");
         let pwm_path = hwmon.join("pwm1");
-        let now = std::time::Instant::now();
 
         if pct == 100 {
             // Max boost mode: pwm1_enable must be 0
@@ -772,7 +837,7 @@ impl FanService {
             {
                 let mut state = self.state.lock().await;
                 let has_pwm = Self::has_pwm_fallback(&state).await;
-                if Self::curve_mode_delegates_to_firmware(&mode, state.hwmon_path.is_some(), has_pwm) {
+                if !Self::nbfc_available().await && Self::curve_mode_delegates_to_firmware(&mode, state.hwmon_path.is_some(), has_pwm) {
                     Self::write_pwm_duty(&mut state, 0).await;
                     continue;
                 }
@@ -1040,6 +1105,9 @@ impl FanService {
     }
 
     async fn has_pwm_fallback(state: &FanState) -> bool {
+        if Self::nbfc_available().await {
+            return true;
+        }
         if let Some(ref hwmon) = state.hwmon_path {
             sysfs_exists(hwmon.join("pwm1")).await
         } else {
@@ -1062,6 +1130,8 @@ impl FanService {
             _ => return false,
         };
 
+        let has_nbfc = Self::nbfc_available().await;
+
         // FIX #3: Hard-block software fan modes (auto/custom/performance) when the
         // board's capability DB says WMI fan writes are unsupported. On abort-prone
         // boards (878A etc.), falling through to pwm1_enable=1 causes endless 0x2E
@@ -1070,7 +1140,7 @@ impl FanService {
         let board_id = board_id.trim();
         let caps = crate::capabilities::detect(board_id, "", "");
         
-        let only_ec_safe = caps.supports_fan_control_ec && !caps.supports_fan_control_wmi;
+        let only_ec_safe = caps.supports_fan_control_ec && !caps.supports_fan_control_wmi && !has_nbfc;
         if only_ec_safe && matches!(mode, "auto" | "custom" | "performance") {
             warn!("Board {} supports only EC fan control (WMI 0x2E writes proven rejected by BIOS). Forcing EC mode.", board_id);
             // (a) Override mode
@@ -1086,23 +1156,40 @@ impl FanService {
 
         let _suppress_ec = std::mem::take(&mut state.suppress_ec_notice);
 
-        // Step 1: Write pwm1_enable
         let mut ok = false;
+        if has_nbfc {
+            ok = match mode {
+                "max" => Self::nbfc_set_speed(100).await,
+                "auto" | "ec" => Self::nbfc_set_auto().await,
+                "performance" => Self::nbfc_set_speed(75).await,
+                "custom" => {
+                    let pct = state.manual_target_pct.unwrap_or(50);
+                    Self::nbfc_set_speed(pct).await
+                }
+                _ => false,
+            };
+            if ok {
+                info!("Set nbfc fan mode={} (success={})", mode, ok);
+            }
+        }
+
+        // Step 1: Write pwm1_enable
         // Value actually written (differs from pwm_enable_val when the board has no pwm1 node).
         let mut written_enable_val = pwm_enable_val;
         if let Some(ref hwmon) = state.hwmon_path {
+            let mut hwmon_ok = false;
             if pwm_enable_val == 0 {
                 // Max boost mode: write 1, write 255 if pwm1 exists, then write 0
                 if sysfs_exists(hwmon.join("pwm1")).await {
                     let _ = sysfs_write(hwmon.join("pwm1_enable"), "1").await;
                     let _ = sysfs_write(hwmon.join("pwm1"), "255").await;
                 }
-                ok = sysfs_write(hwmon.join("pwm1_enable"), "0").await;
+                hwmon_ok = sysfs_write(hwmon.join("pwm1_enable"), "0").await;
             } else if pwm_enable_val == 1 {
                 if !sysfs_exists(hwmon.join("pwm1")).await {
                     // Manual PWM control is not supported without pwm1 sysfs node.
                     // Fall back to hardware EC mode (pwm1_enable=2) instead of failing.
-                    ok = sysfs_write(hwmon.join("pwm1_enable"), "2").await;
+                    hwmon_ok = sysfs_write(hwmon.join("pwm1_enable"), "2").await;
                     written_enable_val = 2;
                 } else {
                     let current = sysfs_read(hwmon.join("pwm1_enable"), 2).await;
@@ -1110,12 +1197,13 @@ impl FanService {
                         let _ = sysfs_write(hwmon.join("pwm1_enable"), "2").await;
                         tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
                     }
-                    ok = sysfs_write(hwmon.join("pwm1_enable"), "1").await;
+                    hwmon_ok = sysfs_write(hwmon.join("pwm1_enable"), "1").await;
                 }
             } else if pwm_enable_val == 2 {
-                ok = sysfs_write(hwmon.join("pwm1_enable"), "2").await;
+                hwmon_ok = sysfs_write(hwmon.join("pwm1_enable"), "2").await;
             }
-            if ok {
+            if hwmon_ok {
+                ok = true;
                 info!("Set pwm1_enable={} (mode={})", written_enable_val, mode);
                 if mode == "ec" {
                     info!("Hardware (EC) fan control delegated; BIOS watchdog handoff may take up to 120s.");
@@ -1217,6 +1305,11 @@ impl FanService {
     }
 
     async fn get_target_speed(state: &FanState, fan_num: u32) -> u32 {
+        if let Some(&tgt) = state.last_targets.get(&fan_num) {
+            if tgt > 0 {
+                return tgt;
+            }
+        }
         if let Some(ref hwmon) = state.hwmon_path {
             let path = hwmon.join(format!("fan{}_target", fan_num));
             if sysfs_exists(&path).await {
@@ -1272,9 +1365,11 @@ impl FanService {
         }
         
         let display_mode = state.mode.clone();
-        let is_available = state.hwmon_path.is_some() && state.fan_count > 0;
+        let is_available = (state.hwmon_path.is_some() || Self::nbfc_available().await) && state.fan_count > 0;
         let mut supports_custom = false;
-        if let Some(ref hwmon) = state.hwmon_path {
+        if Self::nbfc_available().await {
+            supports_custom = true;
+        } else if let Some(ref hwmon) = state.hwmon_path {
             supports_custom = Self::has_pwm_fallback(&state).await || sysfs_exists(hwmon.join("fan1_target")).await;
         }
         let thermal_protection = state.thermal_protection_active;

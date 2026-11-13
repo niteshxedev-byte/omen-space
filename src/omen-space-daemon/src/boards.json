@@ -2217,11 +2217,11 @@
             "model_year": 2022,
             "family": "Victus",
             "supports_fan_control_wmi": false,
-            "supports_fan_control_ec": false,
-            "supports_fan_curves": false,
+            "supports_fan_control_ec": true,
+            "supports_fan_curves": true,
             "supports_independent_fan_curves": false,
-            "supports_rpm_readback": false,
-            "fan_zone_count": 1,
+            "supports_rpm_readback": true,
+            "fan_zone_count": 2,
             "max_fan_speed_percent": 100,
             "min_fan_speed_percent": 0,
             "supports_performance_modes": true,
@@ -2243,7 +2243,7 @@
             "supports_power_limits": true,
             "supports_battery_care": true,
             "linux_assessment": null,
-            "notes": "GitHub #246 \u2014 TrDiTu reports app works normally except fan control on Victus 15-fa0000. Conservative Victus profile; WMI thermal-policy fallback enabled. Fan mode WMI commands may not be effective on this board; RPM readback disabled pending validation. Profile (Quiet/Balanced/Performance) changes route via hp_wmi/acpi platform_profile sysfs when WMI BIOS command path is unavailable."
+            "notes": "HP Victus 15-fa0xxx with NoteBook FanControl (nbfc) EC integration for full custom fan curves, auto, and max fan control."
         },
         {
             "product_id": "88F8",

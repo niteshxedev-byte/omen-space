@@ -10,6 +10,10 @@ pub enum FanCommand {
     SetMode {
         mode: String,
     },
+    /// Set fan speed percentage (0-100)
+    SetSpeed {
+        speed: u32,
+    },
     /// Set target RPM for a specific fan
     SetTarget {
         fan_id: u32,
@@ -27,6 +31,12 @@ pub async fn handle(cmd: &FanCommand, conn: &Connection) -> Result<()> {
     match cmd {
         FanCommand::SetMode { mode } => {
             let res = proxy.set_fan_mode(mode).await?;
+            println!("Response: {}", res);
+        }
+        FanCommand::SetSpeed { speed } => {
+            let max_speed = 6000;
+            let rpm = ((*speed as f64 / 100.0) * max_speed as f64).round() as u32;
+            let res = proxy.set_fan_target(0, rpm).await?;
             println!("Response: {}", res);
         }
         FanCommand::SetTarget { fan_id, rpm } => {
