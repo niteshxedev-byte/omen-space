@@ -730,7 +730,7 @@ pub fn build_page() -> gtk::Box {
         let card_weak = awake_card.downgrade();
         let badge_c = status_badge.clone();
         let idle_c = live_idle_label.clone();
-        glib::timeout_add_local(std::time::Duration::from_secs(2), move || {
+        glib::timeout_add_local(std::time::Duration::from_secs(1), move || {
             let Some(c) = card_weak.upgrade() else {
                 return glib::ControlFlow::Break;
             };

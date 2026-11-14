@@ -83,24 +83,38 @@ pub fn build_page(window: &adw::ApplicationWindow) -> gtk::Box {
         "2 Hours (Default)",
         "3 Hours",
         "4 Hours",
+        "Custom...",
     ]);
 
     let selected_idx = match init_state.timeout_secs {
         1800 => 0,
         3600 => 1,
         5400 => 2,
+        7200 => 3,
         10800 => 4,
         14400 => 5,
-        _ => 3, // Default 2 hours
+        _ => 6, // Custom
     };
 
     let timeout_row = adw::ComboRow::builder()
-        .title("Inactivity Duration Threshold")
-        .subtitle("Show the 'Are you awake?' dialog after this period of no keyboard or trackpad/mouse input")
+        .title("Inactivity Duration Preset")
+        .subtitle("Select a common preset or set an exact minute duration below")
         .model(&timeout_model)
         .selected(selected_idx)
         .build();
     guard_group.add(&timeout_row);
+
+    // Custom exact duration spin button
+    let custom_spin_row = adw::ActionRow::builder()
+        .title("Exact Timeout (Minutes)")
+        .subtitle("Fine-tune inactivity limit from 5 to 480 minutes (e.g. 15, 30, 45, 90, 120)")
+        .build();
+    let init_mins = (init_state.timeout_secs / 60).clamp(5, 480) as f64;
+    let time_spin = gtk::SpinButton::with_range(5.0, 480.0, 5.0);
+    time_spin.set_value(init_mins);
+    time_spin.set_valign(gtk::Align::Center);
+    custom_spin_row.add_suffix(&time_spin);
+    guard_group.add(&custom_spin_row);
 
     // Awake Behavior Row
     let behavior_row = adw::ActionRow::builder()
@@ -168,7 +182,7 @@ pub fn build_page(window: &adw::ApplicationWindow) -> gtk::Box {
 
     // ── Interactive Testing & Quick Actions Group ──────────────────────────────
     let actions_group = adw::PreferencesGroup::builder()
-        .title("Testing & Immediate Actions")
+        .title("Testing &amp; Immediate Actions")
         .description("Test the popup dialog or manually adjust the timer without waiting.")
         .build();
 
@@ -200,9 +214,11 @@ pub fn build_page(window: &adw::ApplicationWindow) -> gtk::Box {
         .build();
 
     let timeout_row_c = timeout_row.clone();
+    let time_spin_c = time_spin.clone();
     extend_btn.connect_clicked(move |_| {
         daemon_client::extend_inactivity_timer_sync(10800);
         timeout_row_c.set_selected(4); // Select "3 Hours" in combo
+        time_spin_c.set_value(180.0);
     });
     extend_row.add_suffix(&extend_btn);
     actions_group.add(&extend_row);
@@ -217,27 +233,57 @@ pub fn build_page(window: &adw::ApplicationWindow) -> gtk::Box {
     let updating_cfg = Rc::new(Cell::new(false));
 
     let u_cfg = updating_cfg.clone();
-    let sync_to_daemon = move || {
+    let spin_c = time_spin.clone();
+    let sync_combo = move || {
         if u_cfg.get() { return; }
+        u_cfg.set(true);
         let enabled = sw_clone.is_active();
         let idx = combo_clone.selected();
         let timeout_secs = match idx {
             0 => 1800,
             1 => 3600,
             2 => 5400,
+            3 => 7200,
             4 => 10800,
             5 => 14400,
-            _ => 7200,
+            _ => (spin_c.value().round() as u64) * 60,
         };
+        if idx < 6 {
+            spin_c.set_value((timeout_secs / 60) as f64);
+        }
         daemon_client::set_inactivity_timer_sync(enabled, timeout_secs);
+        u_cfg.set(false);
     };
-    let sync_rc = Rc::new(sync_to_daemon);
+    let sync_combo_rc = Rc::new(sync_combo);
 
-    let s1 = sync_rc.clone();
+    let s1 = sync_combo_rc.clone();
     enable_switch.connect_active_notify(move |_| s1());
 
-    let s2 = sync_rc.clone();
+    let s2 = sync_combo_rc.clone();
     timeout_row.connect_selected_notify(move |_| s2());
+
+    let sw_c2 = enable_switch.clone();
+    let combo_c2 = timeout_row.clone();
+    let u_spin = updating_cfg.clone();
+    time_spin.connect_value_changed(move |spin| {
+        if u_spin.get() { return; }
+        u_spin.set(true);
+        let mins = spin.value().round() as u64;
+        let secs = mins * 60;
+        let enabled = sw_c2.is_active();
+        daemon_client::set_inactivity_timer_sync(enabled, secs);
+        let idx = match secs {
+            1800 => 0,
+            3600 => 1,
+            5400 => 2,
+            7200 => 3,
+            10800 => 4,
+            14400 => 5,
+            _ => 6,
+        };
+        combo_c2.set_selected(idx);
+        u_spin.set(false);
+    });
 
     // ── Live Telemetry Polling Loop (1-second tick) ─────────────────────────────
     let page_weak = page.downgrade();

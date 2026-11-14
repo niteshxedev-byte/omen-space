@@ -298,8 +298,8 @@ pub fn build_page(window: &adw::ApplicationWindow, on_lang_changed: Option<Rc<dy
 
     // ── Inactivity & Sleep Timer group ─────────────────────────
     let awake_group = adw::PreferencesGroup::builder()
-        .title("Inactivity & Sleep Guard")
-        .description("Automatically checks for keyboard & trackpad activity and presents an 'Are you awake?' prompt before shutting down to protect battery and hardware.")
+        .title("Inactivity &amp; Sleep Guard")
+        .description("Automatically checks for keyboard &amp; trackpad activity and presents an 'Are you awake?' prompt before shutting down to protect battery and hardware.")
         .build();
 
     let init_inactivity = crate::daemon_client::get_inactivity_state_sync();
