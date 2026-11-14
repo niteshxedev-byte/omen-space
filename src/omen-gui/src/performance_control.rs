@@ -650,6 +650,131 @@ pub fn build_page() -> gtk::Box {
     });
 
     page.append(&curve_revealer);
+
+    // ── Inactivity & Sleep Guard Quick Dashboard Card ─────────────────────────
+    let awake_card = gtk::Box::builder()
+        .orientation(gtk::Orientation::Horizontal)
+        .spacing(14)
+        .margin_top(14)
+        .css_classes(["os-card"])
+        .valign(gtk::Align::Center)
+        .build();
+
+    let icon_clock = gtk::Image::builder()
+        .icon_name("preferences-system-time-symbolic")
+        .pixel_size(24)
+        .valign(gtk::Align::Center)
+        .build();
+    awake_card.append(&icon_clock);
+
+    let info_box = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .spacing(3)
+        .hexpand(true)
+        .valign(gtk::Align::Center)
+        .build();
+
+    let title_line = gtk::Box::builder()
+        .orientation(gtk::Orientation::Horizontal)
+        .spacing(8)
+        .build();
+
+    let card_title = gtk::Label::builder()
+        .label("Inactivity & Sleep Guard")
+        .css_classes(["os-card-header"])
+        .halign(gtk::Align::Start)
+        .build();
+    title_line.append(&card_title);
+
+    let init_inact = crate::daemon_client::get_inactivity_state_sync();
+    let status_badge = gtk::Label::builder()
+        .label(if init_inact.enabled { "ACTIVE (2h)" } else { "DISABLED" })
+        .css_classes([if init_inact.enabled { "badge-ok" } else { "badge-warn" }])
+        .valign(gtk::Align::Center)
+        .build();
+    title_line.append(&status_badge);
+    info_box.append(&title_line);
+
+    let card_desc = gtk::Label::builder()
+        .label("Monitors physical keyboard & trackpad inactivity and prompts 'Are you awake?' before system shutdown.")
+        .css_classes(["os-section-desc"])
+        .halign(gtk::Align::Start)
+        .wrap(true)
+        .build();
+    info_box.append(&card_desc);
+
+    let live_idle_label = gtk::Label::builder()
+        .label(&format!("Current Inactivity: {}s", init_inact.idle_secs))
+        .css_classes(["os-section-desc"])
+        .halign(gtk::Align::Start)
+        .build();
+    info_box.append(&live_idle_label);
+
+    awake_card.append(&info_box);
+
+    let btn_test_prompt = gtk::Button::builder()
+        .label("Test Prompt")
+        .css_classes(["suggested-action"])
+        .valign(gtk::Align::Center)
+        .tooltip_text("Immediately trigger 'Are you awake?' dialog to verify countdown")
+        .build();
+    btn_test_prompt.connect_clicked(|_| {
+        crate::daemon_client::trigger_awake_prompt_sync();
+    });
+    awake_card.append(&btn_test_prompt);
+
+    page.append(&awake_card);
+
+    // Live update for sleep guard card
+    {
+        let card_weak = awake_card.downgrade();
+        let badge_c = status_badge.clone();
+        let idle_c = live_idle_label.clone();
+        glib::timeout_add_local(std::time::Duration::from_secs(2), move || {
+            let Some(c) = card_weak.upgrade() else {
+                return glib::ControlFlow::Break;
+            };
+            if !c.is_mapped() {
+                return glib::ControlFlow::Continue;
+            }
+
+            #[allow(deprecated)]
+            let (tx, rx) = glib::MainContext::channel::<omen_types::InactivityState>(glib::Priority::default());
+            let badge_2 = badge_c.clone();
+            let idle_2 = idle_c.clone();
+
+            rx.attach(None, move |st| {
+                if st.enabled {
+                    badge_2.remove_css_class("badge-warn");
+                    badge_2.add_css_class("badge-ok");
+                    let hrs = st.timeout_secs as f64 / 3600.0;
+                    badge_2.set_label(&format!("ACTIVE ({:.1}h)", hrs));
+                } else {
+                    badge_2.remove_css_class("badge-ok");
+                    badge_2.add_css_class("badge-warn");
+                    badge_2.set_label("DISABLED");
+                }
+
+                if st.idle_secs < 60 {
+                    idle_2.set_label(&format!("Current Inactivity: {}s", st.idle_secs));
+                } else {
+                    let mins = st.idle_secs / 60;
+                    let secs = st.idle_secs % 60;
+                    idle_2.set_label(&format!("Current Inactivity: {}m {}s", mins, secs));
+                }
+                glib::ControlFlow::Break
+            });
+
+            let rt = crate::daemon_client::get_runtime();
+            rt.spawn(async move {
+                let st = crate::daemon_client::get_inactivity_state_async().await;
+                let _ = tx.send(st);
+            });
+
+            glib::ControlFlow::Continue
+        });
+    }
+
     page
 }
 

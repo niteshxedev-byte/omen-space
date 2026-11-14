@@ -13,6 +13,7 @@ mod undervolt;
 mod mux;
 mod keyboardrgb;
 mod settings;
+mod sleep_guard;
 mod ui_scale;
 mod desktop_rgb_gui;
 mod updater;
@@ -364,6 +365,12 @@ fn render_ui(window: &adw::ApplicationWindow, initial_page: &str) {
 
 
 
+    let page_sleep_guard = sleep_guard::build_page(window);
+    page_sleep_guard.set_margin_top(m);
+    page_sleep_guard.set_margin_start(m);
+    page_sleep_guard.set_margin_end(m);
+    page_sleep_guard.set_margin_bottom(m);
+
     let page_debug = debug_center::build_page(window);
     page_debug.set_margin_top(m);
     page_debug.set_margin_start(m);
@@ -371,6 +378,7 @@ fn render_ui(window: &adw::ApplicationWindow, initial_page: &str) {
     page_debug.set_margin_bottom(m);
 
     stack.add_named(&gen_box, Some("performance"));
+    stack.add_named(&page_sleep_guard, Some("sleepguard"));
     stack.add_named(&page_undervolt, Some("undervolt"));
     stack.add_named(&page_mux, Some("mux"));
     stack.add_named(&mon_content, Some("monitoring"));
@@ -398,6 +406,7 @@ fn render_ui(window: &adw::ApplicationWindow, initial_page: &str) {
 
     let tabs = [
         ("omen-performance-symbolic", i18n::t("nav_performance"), "performance"),
+        ("preferences-system-time-symbolic", i18n::t("nav_sleep_guard"), "sleepguard"),
         ("omen-power-symbolic", i18n::t("nav_undervolt"), "undervolt"),
         ("omen-gpu-symbolic", i18n::t("nav_mux"), "mux"),
         ("omen-monitor-symbolic", i18n::t("nav_monitoring"), "monitoring"),

@@ -119,8 +119,12 @@ Added a configurable inactivity timer feature to automatically detect user absen
 - `src/omen-overlay/src/daemon_client.rs`: D-Bus client calls for extending timer and powering off.
 - `src/omen-overlay/src/main.rs`: Added `--awake-dialog` command-line argument.
 - `src/omen-overlay/src/style.css`: Sleek glassmorphic OMEN styling for dialog and countdown.
+- `src/omen-gui/src/sleep_guard.rs`: Dedicated full-page GUI for Sleep Guard with real-time idle tracking and progress bar.
+- `src/omen-gui/src/performance_control.rs`: Added quick-access Sleep Guard dashboard card on the main Performance view.
+- `src/omen-gui/src/main.rs`: Registered top-level Sleep Guard sidebar navigation tab.
+- `src/omen-gui/src/i18n.rs`: Added translations for Sleep Guard navigation item.
 - `src/omen-gui/src/settings.rs`: Added Inactivity Guard preference group and controls.
-- `src/omen-gui/src/daemon_client.rs`: Synchronous helpers for inactivity settings.
+- `src/omen-gui/src/daemon_client.rs`: Synchronous & asynchronous helpers for inactivity settings.
 - `src/omen-cli/src/commands/system.rs`: Added `awake-status`, `set-awake`, and `test-awake` commands.
 - `src/omen-cli/src/dbus_proxy.rs`: D-Bus proxy methods for CLI system commands.
 - `MODIFICATIONS.md`: Documentation of modifications and verification.

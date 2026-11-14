@@ -724,6 +724,19 @@ pub fn set_battery_care_sync(limit: u32) {
     });
 }
 
+pub async fn get_inactivity_state_async() -> InactivityState {
+    if let Ok(conn) = get_conn().await {
+        if let Ok(proxy) = PlatformProxy::new(&conn).await {
+            if let Ok(json_str) = proxy.get_inactivity_state().await {
+                if let Ok(st) = serde_json::from_str::<InactivityState>(&json_str) {
+                    return st;
+                }
+            }
+        }
+    }
+    InactivityState::default()
+}
+
 pub fn get_inactivity_state_sync() -> InactivityState {
     tokio::task::block_in_place(|| {
         get_runtime().block_on(async {
