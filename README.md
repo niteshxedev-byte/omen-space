@@ -33,14 +33,67 @@
 
 | Module | Capabilities |
 | :--- | :--- |
-| **Performance & Cooling** | `Eco`, `Balanced`, and `Performance` BIOS thermal profiles; software-smart `Auto` cooling, `Max` fan mode, custom multi-point fan curves with saved presets, one-click **Delegate to EC**, fan dust-cleaning mode, and continuous `>= 90°C` / `95°C` thermal protection. |
+| **Performance & Cooling** | `Eco`, `Balanced`, and `Performance` BIOS thermal profiles; software-smart `Auto` cooling, `Max` fan mode, custom multi-point fan curves with saved presets, one-click **Delegate to EC**, fan dust-cleaning mode, NoteBook FanControl (`nbfc`) EC backend integration for HP Victus, and continuous `>= 90°C` / `95°C` thermal protection. |
+| **Inactivity & Sleep Guard** | Automated unattended sleep guard tracking physical keyboard and trackpad/mouse input via Linux `evdev`. Displays an interactive 60-second countdown prompt ("Are you awake?") when idle, extending to 3 hours on confirmation or safely shutting down (`systemctl poweroff`) to prevent overheating and battery depletion. |
 | **Advanced Power** | Real-time Intel RAPL `PL1` / `PL2` power limits (with boot-default tracking), `TCC Offset` temperature ceiling, MSR voltage offsets (with hardware `UV_LOCK` detection), GPU Dynamic Boost (`cTGP` / `PPAB`), and AMD Ryzen SMU tuning. |
 | **Graphics Switcher (MUX)** | Switch between **Hybrid (MSHybrid)**, **Discrete (dGPU)**, and **Advanced Optimus** modes with live `eDP` display routing and NVIDIA driver telemetry. |
 | **RGB Studio** | 4-Zone OMEN, Single-Zone Victus, chassis Lightbar, and Darfon Per-Key (`0d62:54bf`) RGB lighting with static, breathing, wave, and hardware MCU animations. |
-| **Quick HUD (`Shift+F2`)** | In-game floating overlay and system tray applet for switching power and fan profiles on the fly without leaving your workflow. |
+| **Quick HUD (`Shift+F2`) & Hotkeys** | In-game floating overlay, system tray applet, and physical keyboard **OMEN Key** (`KEY_PROG1`) instant launch mapping matching Windows behavior. |
 | **Profile Manager & Updater** | Automatic per-application performance rules (Wayland & X11) and an integrated **Update Center** with commit-level changelog tracking, live build progress, and `fwupd` (LVFS) firmware scanning. |
 
-> **Note on HP Victus & Non-PWM Boards:** See [MODIFICATIONS.md](MODIFICATIONS.md) for details on NoteBook FanControl (`nbfc`) EC integration for HP Victus 15 laptops (`8A4F`) where WMI fan writes are unsupported by the BIOS.
+> **Custom Hardware Integrations & New Features:** See [MODIFICATIONS.md](MODIFICATIONS.md) for full hardware analysis on NoteBook FanControl (`nbfc`) EC integration and the Inactivity Sleep Guard architecture.
+
+---
+
+## Custom Features & Hardware Adaptations (Why & How)
+
+### 1. NoteBook FanControl (`nbfc`) EC Integration (HP Victus 15 & Non-PWM Boards)
+- **Why It Was Added:**
+  HP Victus 15 laptops (such as Board ID `8A4F` / BIOS `F.28`) and similar modern HP models do not accept manual WMI fan writes (`0x2E` commands fail or are silently ignored by the BIOS). Furthermore, the Linux kernel driver only exposes read-only tachometer sensors (`fan1_input`, `fan2_input`) and lacks a writable `pwm1` sysfs node. Consequently, native fan curves and manual fan speed controls were previously unavailable on Linux for these laptops.
+- **How It Works:**
+  `omen-space-daemon` integrates the NoteBook FanControl (`nbfc`) service as an Embedded Controller (EC) backend. When `pwm1` sysfs nodes are absent, target fan percentages are routed directly to EC registers `0x2D` and `0x2C`. This enables:
+  - Full manual fan control (`omen-cli fan set-speed <0-100>`).
+  - Max boost fan mode (up to 6,000 RPM).
+  - Dynamic thermal curve-driven speed adjustment.
+  - Safe fallback to firmware EC auto mode (`nbfc set -a`).
+
+### 2. Inactivity & Sleep Guard ("Are You Awake?" Smart Auto-Shutdown)
+- **Why It Was Added:**
+  High-performance gaming laptops with dedicated NVIDIA RTX GPUs generate substantial heat and rapidly drain batteries when left unattended overnight (e.g., falling asleep while watching movies or during long downloads). Modern Linux hybrid sleep / S0ix often fails due to driver states or background wake locks. Sleep Guard provides an autonomous, foolproof safety net against battery degradation and thermal throttling.
+- **How It Works:**
+  - **Hardware Evdev Monitoring:** `omen-space-daemon` directly monitors all keyboard, trackpad, and mouse devices under `/dev/input/event*` with zero desktop compositor dependency. Any physical keypress or touchpad motion immediately resets the idle timer.
+  - **Configurable Inactivity Threshold:** Configurable in the GUI and CLI (default: **2 hours**; presets for 30m, 1h, 1.5h, 2h, 3h, 4h, or custom exact minutes from 5 to 480 min).
+  - **Interactive Countdown Dialog (`omen-overlay --awake-dialog`):** When inactivity reaches the threshold, a 60-second modal countdown dialog appears on screen with keyboard shortcuts:
+    - **"Yes, I'm awake (+1h to 3h)"** (`Enter`, `Space`, `Y`, `Esc`): Extends the timeout to **3 hours** (10,800s), resets the idle timer, sends a desktop confirmation notification, and dismisses the dialog.
+    - **"Shut Down Now"** (`S` or when countdown hits 0): Issues a safe system poweroff (`systemctl poweroff`).
+    - **Daemon Safety Watchdog:** A 75-second fallback watchdog shuts down the system even if the desktop environment is locked or unreachable.
+  - **Dedicated GUI Controls:**
+    - Dedicated **Sleep Guard** sidebar tab with real-time idle tracking, dynamic progress bar, fine-grained minute spinbox, and a **"Launch Test Prompt"** button.
+    - Quick-access status card directly on the main **Performance** screen with smooth 1-second cadence.
+
+### 3. Physical OMEN Key Keyboard Shortcut (Windows Parity)
+- **Why It Was Added:**
+  On Windows, pressing the physical diamond OMEN / Victus key on the keyboard immediately launches OMEN Gaming Hub. On Linux, this key code (`KEY_PROG1` / code 148) was unhandled and dead by default.
+- **How It Works:**
+  `hotkey_monitor` listens to `/dev/input/event*` HP WMI hotkeys and broadcasts `MacroKeyPressed("omen")` across D-Bus. The `omen-tray` user service catches the signal and spawns `omen-gui`, with global shortcut registration in KDE Plasma and GNOME.
+
+### 4. High-Precision 1-Second Telemetry Refresh
+- **Why It Was Added:**
+  A previous 2-second GUI poll caused the live inactivity counter to jump in steps of two (`0s → 2s → 4s → 6s → 8s`), skipping odd numbers and making the timer look jerky.
+- **How It Works:**
+  Refactored all dashboard telemetry loops to a smooth 1-second (`1000ms`) interval, giving smooth, consecutive second-by-second feedback.
+
+---
+
+## CLI Quick Reference for New Features
+
+| Command | Action |
+| :--- | :--- |
+| `omen-cli fan set-speed <0-100>` | Set manual fan speed percentage across both fans via EC registers |
+| `omen-cli fan set-mode <auto\|max\|custom\|ec>` | Switch global fan modes (including NoteBook FanControl backend) |
+| `omen-cli system awake-status` | Display live Inactivity Guard status, timeout, idle time, and prompt state |
+| `omen-cli system set-awake <hours>` | Configure inactivity timeout in hours (e.g. `2.0` for 2h, `0.5` for 30m, `0` to disable) |
+| `omen-cli system test-awake` | Immediately pop up the "Are you awake?" countdown dialog on screen for testing |
 
 
 ---
